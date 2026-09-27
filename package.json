@@ -5,7 +5,7 @@
   "type": "commonjs",
   "scripts": {
     "check": "node service.js --check",
-    "test": "node --test service.test.js"
+    "test": "node --test"
   }
 }
 
