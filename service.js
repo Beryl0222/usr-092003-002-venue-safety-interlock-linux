@@ -1,39 +1,35 @@
 "use strict";
 
 const http = require("node:http");
+const { Store } = require("./lib/store");
+const { createApp, SERVICE_ID, SERVICE_NAME, healthPayload } = require("./lib/api");
+const seed = require("./lib/seed");
 
-const SERVICE_ID = "venue-safety-interlock";
-const SERVICE_NAME = "场馆档期安全联锁";
-
-function healthPayload() {
-  return { status: "ok", service: SERVICE_ID, name: SERVICE_NAME };
-}
-
-function createServer() {
-  return http.createServer((request, response) => {
-    if (request.method !== "GET" || request.url !== "/health") {
-      response.writeHead(404);
-      response.end();
-      return;
-    }
-    const body = JSON.stringify(healthPayload());
-    response.writeHead(200, {
-      "content-type": "application/json; charset=utf-8",
-      "content-length": Buffer.byteLength(body),
-    });
-    response.end(body);
-  });
+function createServer(store) {
+  const s = store || new Store();
+  const server = http.createServer(createApp(s));
+  server.store = s;
+  return server;
 }
 
 if (require.main === module) {
   if (process.argv.includes("--check")) {
     if (healthPayload().service !== SERVICE_ID) throw new Error("服务身份不一致");
+    const store = new Store();
+    seed(store);
+    const replayed = store.replay(store.clock());
+    if (!replayed.spaces["main-arena"] || !replayed.permits["permit-2026"]) {
+      throw new Error("状态回放不一致");
+    }
     process.stdout.write("基础检查通过\n");
   } else {
+    const store = new Store();
+    if (process.argv.includes("--seed")) seed(store);
     const port = Number(process.env.PORT || 8000);
-    createServer().listen(port, "127.0.0.1");
+    createServer(store).listen(port, "127.0.0.1", () => {
+      process.stdout.write(`${SERVICE_NAME} 已启动: http://127.0.0.1:${port}/health\n`);
+    });
   }
 }
 
-module.exports = { SERVICE_ID, SERVICE_NAME, createServer, healthPayload };
-
+module.exports = { SERVICE_ID, SERVICE_NAME, createServer, healthPayload, Store };
